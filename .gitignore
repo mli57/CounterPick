@@ -1,0 +1,16 @@
+# database files
+*.db
+
+# trained model
+*.pkl
+
+# python cache
+__pycache__/
+*.pyc
+
+# environment variables (!!! api key !!!)
+.env
+
+# editor
+.vscode/
+.idea/
