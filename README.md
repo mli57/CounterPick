@@ -37,7 +37,7 @@ For a full breakdown of the technical decisions and architecture, see [DESIGN.md
 |---|---|
 | Data collection pipeline | Done |
 | Role normalization | In progress |
-| Feature engineering | Not started |
+| Feature engineering | In progress |
 | Model training | Not started |
 | FastAPI backend | Not started |
 | React frontend | Not started |
