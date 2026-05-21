@@ -1,3 +1,13 @@
+"""
+normalize_roles.py
+
+How it works:
+    Computes each champion's majority role(top, mid, jungle, bot, support) per patch from the participants table,
+    writes results to champion_role_majority, then copies role_raw into role_normalized.
+
+How to run this file:
+    python normalize_roles.py --db lol_draft.db
+"""
 import argparse
 import sqlite3
 import logging
@@ -13,10 +23,7 @@ log = logging.getLogger(__name__)
 
 
 def calculate_role_majority(conn):
-    """
-    use sql queries to calculate the majority role of each champion
-    """
-
+    # use sql queries to calculate the majority role of each champion
     query = """
 
     WITH role_counts AS(
@@ -50,23 +57,17 @@ def calculate_role_majority(conn):
 
 
 def save_role_majority(conn, best):
-    """
-    Save the calculated champion role majority to db
-    """
-
+    # Save the calculated champion role majority to db
     for key, value in best.items():
         query = """
         INSERT OR REPLACE INTO champion_role_majority (champion_id, patch, majority_role, role_share) VALUES (?, ?, ?, ?)
-    """
+        """
         conn.execute(query,(best[key][0], best[key][4], best[key][1], best[key][3]))
     conn.commit()
 
 
 def update_role_normalized(conn):
-    """
-    add the correct normalized champion role into the participants table
-    """
-
+    # add the correct normalized champion role into the participants table
     query = """
     UPDATE participants SET role_normalized = role_raw WHERE role_raw != ''
     """
@@ -75,16 +76,13 @@ def update_role_normalized(conn):
 
 
 def parse_args():
-    """
-    houses the db flags only, so we can point script at different db files.
-    """
-
+    # houses the db flags only, so we can point script at different db files.
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default="lol_draft.db", help="SQLite database path")
     return parser.parse_args()
 
 def main():
-    #declare parse_args to get --db from command line
+    # declare parse_args to get --db from command line
     args = parse_args()
     conn = sqlite3.connect(args.db) # connect to sqlite db
     log.info(f"Connected to {args.db}")
