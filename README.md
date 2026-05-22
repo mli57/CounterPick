@@ -36,7 +36,7 @@ For a full breakdown of the technical decisions and architecture, see [DESIGN.md
 | Component | Status |
 |---|---|
 | Data collection pipeline | Done |
-| Role normalization | In progress |
+| Role normalization | Done |
 | Feature engineering | In progress |
 | Model training | Not started |
 | FastAPI backend | Not started |
