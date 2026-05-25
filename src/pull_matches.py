@@ -291,7 +291,7 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
              p.get("kills", 0),
              p.get("deaths", 0),
              p.get("assists", 0),
-             p.get("TimeCCingOthers", 0),
+             p.get("timeCCingOthers", 0),
              p.get("totalDamageTaken", 0),
              p.get("damageSelfMitigated", 0),
              p.get("totalDamageDealtToChampions", 0))

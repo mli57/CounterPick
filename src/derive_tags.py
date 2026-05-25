@@ -6,7 +6,7 @@ How it works:
     per-champion per-role per-patch averages, then writes them to champion_tags.
 
 How to run this file: 
-    python src/derive_tags.py --db test.db
+    python src/derive_tags.py --db lol_draft.db
 """
 
 import argparse

@@ -6,7 +6,7 @@ How it works:
     writes results to champion_role_majority, then copies role_raw into role_normalized.
 
 How to run this file:
-    python normalize_roles.py --db lol_draft.db
+    python src/normalize_roles.py --db lol_draft.db
 """
 import argparse
 import sqlite3
