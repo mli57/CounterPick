@@ -1,8 +1,9 @@
 # database files
 *.db
 
-# trained model
-*.pkl
+# ignores all generated artifacts from build_features.py & predict.py
+data/
+models/
 
 # python cache
 __pycache__/
