@@ -27,7 +27,7 @@ How to run this file:
   2. Set the key as an environment variable:
        $env:RIOT_API_KEY="paste the key here"
   3. Run:
-       python pull_matches.py
+       python src/pull_matches.py
   4. Additional flags:
        --db      Path to the SQLite database file
        --target  How many unique matches to collect
@@ -291,7 +291,7 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
              p.get("kills", 0),
              p.get("deaths", 0),
              p.get("assists", 0),
-             p.get("totalTimeCCingOthers", 0),
+             p.get("TimeCCingOthers", 0),
              p.get("totalDamageTaken", 0),
              p.get("damageSelfMitigated", 0),
              p.get("totalDamageDealtToChampions", 0))
