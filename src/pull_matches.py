@@ -228,15 +228,19 @@ def collect_summoner_ids(client: RiotAPIClient):
     """
     puuids = set()
     for tier in TIERS:
+        players_per_tier = 0 # reset once per tier
         for division in DIVISIONS:
             log.info(f"Collecting summoners from {tier} {division}")
             page = 1
-            while len(puuids) < PLAYERS_PER_BRACKET:
+            while players_per_tier < PLAYERS_PER_BRACKET//len(division):  # of games evenly split among divs I, II, III, IV
+                if players_per_tier >= PLAYERS_PER_BRACKET//len(division):
+                    break
                 entries = client.get_player_list(tier, division, page)
                 if not entries:
                     break
                 for entry in entries:
                     puuids.add((entry["puuid"], tier))
+                    players_per_tier += 1
                 page += 1
     return list(puuids)
 
