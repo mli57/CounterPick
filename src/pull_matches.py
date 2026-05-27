@@ -13,7 +13,8 @@ How it works:
 Tables in db:
     matches               (match_id, patch, duration_secs, winning_team, elo_bracket)
     participants          (match_id, team, champion_id, role_raw, role_normalized, win)
-    participant_stats     (participant_id, kills, deaths, assists, total_cc_time, damage_taken, damage_mitigated, damage_dealt_to_champions)
+    participant_stats     (participant_id, kills, deaths, assists, total_cc_time, damage_taken, damage_mitigated,
+                           damage_dealt_to_champions, gold_earned, gold_spent, cs, vision_score)
     champion_meta         (champion_id, champion_name, base_range)
     champion_role_majority & champion_tags are created here but populated by normalize_roles.py and derive_tags.py
 
@@ -182,7 +183,11 @@ def create_db(conn: sqlite3.Connection):
             total_cc_time               INTEGER,
             damage_taken                INTEGER,
             damage_mitigated            INTEGER,
-            damage_dealt_to_champions   INTEGER
+            damage_dealt_to_champions   INTEGER,
+            gold_earned                 INTEGER,    -- total gold earned over the game
+            gold_spent                  INTEGER,    -- total gold spent (proxy for itemization)
+            cs                          INTEGER,    -- totalMinionsKilled + neutralMinionsKilled
+            vision_score                INTEGER     -- ward/vision utility score
         );
 
         CREATE TABLE IF NOT EXISTS champion_meta (
@@ -209,6 +214,25 @@ def create_db(conn: sqlite3.Connection):
             PRIMARY KEY (champion_id, role, patch)
         );
     """)
+
+
+def migrate_db(conn: sqlite3.Connection):
+    """
+    added newer columns(test) to see if this improves accuracy
+    """
+    new_columns = [
+        ("participant_stats", "gold_earned",   "INTEGER DEFAULT 0"),
+        ("participant_stats", "gold_spent",    "INTEGER DEFAULT 0"),
+        ("participant_stats", "cs",            "INTEGER DEFAULT 0"),
+        ("participant_stats", "vision_score",  "INTEGER DEFAULT 0"),
+    ]
+    for table, column, col_def in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+            log.info(f"Migration: added column {column} to {table}")
+        except sqlite3.OperationalError:
+            pass  # column already exists, nothing to do
+    conn.commit()
 
 
 def parse_args():
@@ -286,7 +310,7 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
         # insert their stats, linked to that participant_id
         # use .get() with a default of 0, some fields don't apply to certain champs or game states(some champs dont have cc)
         conn.execute(
-            "INSERT INTO participant_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO participant_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (pid,
              p.get("kills", 0),
              p.get("deaths", 0),
@@ -294,7 +318,11 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
              p.get("timeCCingOthers", 0),
              p.get("totalDamageTaken", 0),
              p.get("damageSelfMitigated", 0),
-             p.get("totalDamageDealtToChampions", 0))
+             p.get("totalDamageDealtToChampions", 0),
+             p.get("goldEarned", 0),
+             p.get("goldSpent", 0),
+             p.get("totalMinionsKilled", 0) + p.get("neutralMinionsKilled", 0),  # CS = lane + jungle
+             p.get("visionScore", 0))
         )
 
     # save everything
@@ -318,6 +346,7 @@ def main():
     conn = sqlite3.connect(args.db)
     conn.execute("PRAGMA foreign_keys = ON")
     create_db(conn)
+    migrate_db(conn)  # adds new columns to existing dbs; no-ops on a fresh db
 
     # create API client, pull data from DDragon
     client = RiotAPIClient(api_key, args.region)
