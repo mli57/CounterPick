@@ -41,7 +41,13 @@ def get_matchups(conn):
             AND tb.patch = m.patch
         WHERE a.team = 100
     """
-    return conn.execute(query).fetchall()
+    rows = conn.execute(query).fetchall()
+
+    # mirror each row from red's perspective: flip the sign of every delta and invert the win label.
+    # this fixes the perspective bias (model was only ever seeing blue - red) and this doubles training data for free.
+    mirrored = [(1 - win, -cc, -dmg, -gt) for win, cc, dmg, gt in rows]
+
+    return rows + mirrored
 
 def write_to_csv(data, output_path, header):
     with open(output_path, 'w', newline='') as file:
