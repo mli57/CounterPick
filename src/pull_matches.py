@@ -126,9 +126,9 @@ class RiotAPIClient:
         url = f"https://{self.platform}.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}?page={page}"
         return self._get(url)
 
-    def get_puuid(self, summoner_id: str):
-        url = f"https://{self.platform}.api.riotgames.com/lol/summoner/v4/summoners/{summoner_id}"
-        return self._get(url)["puuid"]
+    # def get_puuid(self, summoner_id: str):
+    #     url = f"https://{self.platform}.api.riotgames.com/lol/summoner/v4/summoners/{summoner_id}"
+    #     return self._get(url)["puuid"]
 
     def get_match_ids(self, puuid: str):
         url = f"https://{self.regional}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?queue=420&count={GAMES_PER_PLAYER}"  # 420 = ranked solo/duo
@@ -252,20 +252,18 @@ def collect_summoner_ids(client: RiotAPIClient):
     """
     puuids = set()
     for tier in TIERS:
-        players_per_tier = 0 # reset once per tier
         for division in DIVISIONS:
-            log.info(f"Collecting summoners from {tier} {division}")
+            players_per_division = 0
             page = 1
-            while players_per_tier < PLAYERS_PER_BRACKET//len(division):  # of games evenly split among divs I, II, III, IV
-                if players_per_tier >= PLAYERS_PER_BRACKET//len(division):
-                    break
+            while players_per_division < PLAYERS_PER_BRACKET//len(DIVISIONS):  # of games evenly split among divs I, II, III, IV
                 entries = client.get_player_list(tier, division, page)
                 if not entries:
                     break
                 for entry in entries:
                     puuids.add((entry["puuid"], tier))
-                    players_per_tier += 1
+                    players_per_division += 1
                 page += 1
+            log.info(f"Collected {players_per_division} summoners from {tier} {division}")
     return list(puuids)
 
 
