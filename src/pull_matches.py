@@ -208,9 +208,10 @@ def create_db(conn: sqlite3.Connection):
             champion_id         INTEGER REFERENCES champion_meta(champion_id),
             role                TEXT,
             patch               TEXT,
-            avg_cc_time         REAL,
-            avg_damage_mitigated REAL,
-            avg_game_duration_wins REAL,
+            avg_cc_time              REAL,
+            avg_damage_mitigated     REAL,
+            avg_game_duration_wins   REAL,
+            avg_game_duration_losses REAL,
             PRIMARY KEY (champion_id, role, patch)
         );
     """)
