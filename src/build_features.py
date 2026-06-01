@@ -26,7 +26,11 @@ def get_matchups(conn):
         SELECT 
             a.win,
             ta.avg_cc_time - tb.avg_cc_time AS cc_delta, 
-            ta.avg_damage_mitigated - tb.avg_damage_mitigated AS dmg_mit_delta
+            ta.avg_damage_mitigated - tb.avg_damage_mitigated AS dmg_mit_delta,
+            ta.avg_damage_dealt - tb.avg_damage_dealt AS damage_dealt_delta,
+            ta.avg_kills - tb.avg_kills AS kills_delta,
+            ta.avg_deaths - tb.avg_deaths AS deaths_delta,
+            ma.base_range - mb.base_range AS range_delta
         FROM participants a
         JOIN participants b ON b.match_id = a.match_id 
             AND b.role_normalized = a.role_normalized
@@ -38,13 +42,17 @@ def get_matchups(conn):
         JOIN champion_tags tb ON tb.champion_id = b.champion_id 
             AND tb.role = b.role_normalized 
             AND tb.patch = m.patch
+        JOIN champion_meta ma ON ma.champion_id = a.champion_id
+        JOIN champion_meta mb ON mb.champion_id = b.champion_id
         WHERE a.team = 100
+            AND m.duration_secs > 1200
     """
     rows = conn.execute(query).fetchall()
 
     # mirror each row from red's perspective: flip the sign of every delta and invert the win label.
     # this fixes the perspective bias (model was only ever seeing blue - red) and this doubles training data for free.
-    mirrored = [(1 - win, -cc, -dmg) for win, cc, dmg in rows]
+    mirrored = [(1 - win, -cc, -dmg_mit, -dmg_dealt, -kills, -deaths, -range_d)
+                for win, cc, dmg_mit, dmg_dealt, kills, deaths, range_d in rows]
 
     return rows + mirrored
 
@@ -68,7 +76,7 @@ def main():
     conn = sqlite3.connect(args.db) # connect to sqlite db
     log.info(f"Connected to {args.db}")
 
-    header = ['win', 'cc_delta', 'dmg_mit_delta']
+    header = ['win', 'cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta']
     write_to_csv(get_matchups(conn), "data/output.csv", header)
 
 if __name__ == "__main__":
