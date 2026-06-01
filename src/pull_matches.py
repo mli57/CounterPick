@@ -8,7 +8,9 @@ How it works:
 1. Seeds from ~300 players across four elo brackets (Gold, Platinum, Emerald, Diamond)
 2. Fetches each player's PUUID from their summoner profile
 3. Pulls the GAMES_PER_PLAYER most recent match IDs per player
-4. Downloads full match details (champions, roles, winner, duration, patch) and writes to SQLite
+4. Downloads full match details and timeline per match, writes to SQLite:
+   - match detail -> matches, participants, participant_stats
+   - timeline -> lane_outcomes (gold differential per role at 14 min)
 
 Tables in db:
     matches               (match_id, patch, duration_secs, winning_team, elo_bracket)
@@ -16,12 +18,12 @@ Tables in db:
     participant_stats     (participant_id, kills, deaths, assists, total_cc_time, damage_taken, damage_mitigated,
                            damage_dealt_to_champions, gold_earned, gold_spent, cs, vision_score)
     champion_meta         (champion_id, champion_name, base_range)
+    lane_outcomes         (match_id, role, blue_gold_lead_14, lane_winner)
     champion_role_majority & champion_tags are created here but populated by normalize_roles.py and derive_tags.py
 
 API rate limits:
     Riot's free developer key allows 100 requests every 2 minutes.
     The RateLimiter class handles this automatically by sleeping when approaching the limit.
-    Collection of ~18,000 unique matches runs overnight under this constraint.
 
 How to run this file:
   1. Get Riot API key
@@ -126,16 +128,16 @@ class RiotAPIClient:
         url = f"https://{self.platform}.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}?page={page}"
         return self._get(url)
 
-    # def get_puuid(self, summoner_id: str):
-    #     url = f"https://{self.platform}.api.riotgames.com/lol/summoner/v4/summoners/{summoner_id}"
-    #     return self._get(url)["puuid"]
-
     def get_match_ids(self, puuid: str):
         url = f"https://{self.regional}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?queue=420&count={GAMES_PER_PLAYER}"  # 420 = ranked solo/duo
         return self._get(url)
 
     def get_match_detail(self, match_id: str):
         url = f"https://{self.regional}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+        return self._get(url)
+
+    def get_match_timeline(self, match_id: str):
+        url = f"https://{self.regional}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
         return self._get(url)
 
     def get_champion_meta(self):
@@ -217,26 +219,15 @@ def create_db(conn: sqlite3.Connection):
             avg_deaths               REAL,
             PRIMARY KEY (champion_id, role, patch)
         );
+
+        CREATE TABLE IF NOT EXISTS lane_outcomes (
+            match_id            TEXT REFERENCES matches(match_id),
+            role                TEXT,
+            blue_gold_lead_14   INTEGER,    -- pos = blue ahead, neg = red ahead
+            lane_winner         INTEGER,    -- 1 = blue, 0 = red
+            PRIMARY KEY (match_id, role)
+        );
     """)
-
-
-def migrate_db(conn: sqlite3.Connection):
-    """
-    added newer columns(test) to see if this improves accuracy
-    """
-    new_columns = [
-        ("participant_stats", "gold_earned",   "INTEGER DEFAULT 0"),
-        ("participant_stats", "gold_spent",    "INTEGER DEFAULT 0"),
-        ("participant_stats", "cs",            "INTEGER DEFAULT 0"),
-        ("participant_stats", "vision_score",  "INTEGER DEFAULT 0"),
-    ]
-    for table, column, col_def in new_columns:
-        try:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
-            log.info(f"Migration: added column {column} to {table}")
-        except sqlite3.OperationalError:
-            pass  # column already exists, nothing to do
-    conn.commit()
 
 
 def parse_args():
@@ -269,6 +260,50 @@ def collect_summoner_ids(client: RiotAPIClient):
                 page += 1
             log.info(f"Collected {players_per_division} summoners from {tier} {division}")
     return list(puuids)
+
+
+def process_lane_outcomes(conn: sqlite3.Connection, match_id: str, info: dict, timeline: dict):
+    """
+    Extracts each role's gold differential at 14 minutes into the game
+    and writes one row per role into lane_outcomes. Skips matches shorter than 14 min.
+    """
+    frames = timeline["info"]["frames"]
+    if len(frames) <= 14:
+        return
+
+    # {participant_number: gold} at 14 min, timeline keys are 1-indexed strings
+    participant_gold_at_14 = {}
+    for participant_number, participant_frame in frames[14]["participantFrames"].items():
+        participant_gold_at_14[int(participant_number)] = participant_frame["totalGold"]
+
+    # dict {role: {"blue": gold, "red": gold}} match detail participants are 0-indexed
+    gold_by_role = {}
+    for participant_index, participant in enumerate(info["participants"]):
+        role = participant["teamPosition"]
+        if not role: # guards against remade matches
+            continue
+        participant_number = participant_index + 1  # convert 0-indexed to 1-indexed timeline key
+        gold = participant_gold_at_14.get(participant_number, 0)
+        gold_by_role.setdefault(role, {})
+        if participant["teamId"] == 100:
+            gold_by_role[role]["blue"] = gold
+        else:
+            gold_by_role[role]["red"] = gold
+
+    for role, blue_red_gold in gold_by_role.items():
+        if "blue" not in blue_red_gold or "red" not in blue_red_gold:
+            continue  # guards against a player disconnecting before roles were assigned
+        blue_gold_lead = blue_red_gold["blue"] - blue_red_gold["red"]
+        if blue_gold_lead > 0:
+            lane_winner = 1
+        else:
+            lane_winner = 0
+        
+        values = (match_id, role, blue_gold_lead, lane_winner)
+        conn.execute(
+            "INSERT OR IGNORE INTO lane_outcomes(match_id, role, blue_gold_lead_14, lane_winner) VALUES (?, ?, ?, ?)",
+            values
+        )
 
 
 def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str, elo_bracket: str):
@@ -327,7 +362,9 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
              p.get("visionScore", 0))
         )
 
-    # save everything
+    timeline = client.get_match_timeline(match_id)
+    process_lane_outcomes(conn, match_id, info, timeline)
+
     conn.commit()
     return True
 
@@ -348,7 +385,6 @@ def main():
     conn = sqlite3.connect(args.db)
     conn.execute("PRAGMA foreign_keys = ON")
     create_db(conn)
-    migrate_db(conn)  # adds new columns to existing dbs; no-ops on a fresh db
 
     # create API client, pull data from DDragon
     client = RiotAPIClient(api_key, args.region)

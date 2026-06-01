@@ -2,11 +2,16 @@
 build_features.py
 
 How it works:
-    Gets delta values of average cc time, damage mitigation, and game duration(only for winning teams)
-    between two players of the same role, in the same game
+1. For each game, participants from both sides in the same role are paired. 
+2. Their stat deltas (blue minus red) are calculated using aggregated champion averages from champion_tags.
+3. Label is lane_winner from lane_outcomes (1 = blue laner was ahead in gold at 14 min).
+4. Each row is mirrored from red's perspective to fix perspective bias and also doubles the training data.
+5. Outputs data/output.csv.
 
-How to run this file:
-    python src/build_features.py --db test.db 
+Features: cc_delta, dmg_mit_delta, damage_dealt_delta, kills_delta, deaths_delta, range_delta
+
+How to run:
+    python src/build_features.py --db lol_draft.db
 """
 import argparse
 import sqlite3
@@ -23,29 +28,45 @@ log = logging.getLogger(__name__)
 
 def get_matchups(conn):
     query = """
-        SELECT 
-            a.win,
-            ta.avg_cc_time - tb.avg_cc_time AS cc_delta, 
-            ta.avg_damage_mitigated - tb.avg_damage_mitigated AS dmg_mit_delta,
-            ta.avg_damage_dealt - tb.avg_damage_dealt AS damage_dealt_delta,
-            ta.avg_kills - tb.avg_kills AS kills_delta,
-            ta.avg_deaths - tb.avg_deaths AS deaths_delta,
-            ma.base_range - mb.base_range AS range_delta
-        FROM participants a
-        JOIN participants b ON b.match_id = a.match_id 
-            AND b.role_normalized = a.role_normalized
-            AND b.team = 200
-        JOIN matches m ON m.match_id = a.match_id
-        JOIN champion_tags ta ON ta.champion_id = a.champion_id 
-            AND ta.role = a.role_normalized 
-            AND ta.patch = m.patch
-        JOIN champion_tags tb ON tb.champion_id = b.champion_id 
-            AND tb.role = b.role_normalized 
-            AND tb.patch = m.patch
-        JOIN champion_meta ma ON ma.champion_id = a.champion_id
-        JOIN champion_meta mb ON mb.champion_id = b.champion_id
-        WHERE a.team = 100
-            AND m.duration_secs > 1200
+        -- label: was the blue laner ahead in gold at 14 min?
+        SELECT
+            outcome.lane_winner AS win,
+
+            -- feature deltas: blue minus red for each stat
+            blue_tags.avg_cc_time - red_tags.avg_cc_time AS cc_delta,
+            blue_tags.avg_damage_mitigated - red_tags.avg_damage_mitigated AS dmg_mit_delta,
+            blue_tags.avg_damage_dealt - red_tags.avg_damage_dealt AS damage_dealt_delta,
+            blue_tags.avg_kills - red_tags.avg_kills AS kills_delta,
+            blue_tags.avg_deaths - red_tags.avg_deaths AS deaths_delta,
+            blue_meta.base_range - red_meta.base_range AS range_delta
+
+        -- one row per role per game: blue side participant vs red side participant
+        FROM participants blue
+        JOIN participants red ON red.match_id = blue.match_id
+            AND red.role_normalized = blue.role_normalized
+            AND red.team = 200
+
+        -- match metadata (patch, duration)
+        JOIN matches match ON match.match_id = blue.match_id
+
+        -- lane outcome label (gold diff at 14 min)
+        JOIN lane_outcomes outcome ON outcome.match_id = blue.match_id
+            AND outcome.role = blue.role_normalized
+
+        -- aggregated champion stats per role per patch
+        JOIN champion_tags blue_tags ON blue_tags.champion_id = blue.champion_id
+            AND blue_tags.role = blue.role_normalized
+            AND blue_tags.patch = match.patch
+        JOIN champion_tags red_tags ON red_tags.champion_id = red.champion_id
+            AND red_tags.role = red.role_normalized
+            AND red_tags.patch = match.patch
+
+        -- static champion range (melee vs ranged proxy)
+        JOIN champion_meta blue_meta ON blue_meta.champion_id = blue.champion_id
+        JOIN champion_meta red_meta ON red_meta.champion_id = red.champion_id
+
+        WHERE blue.team = 100
+            AND match.duration_secs > 1200  -- exclude remakes and very short games
     """
     rows = conn.execute(query).fetchall()
 
