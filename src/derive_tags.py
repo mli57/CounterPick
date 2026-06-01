@@ -33,7 +33,10 @@ def derive_tags(conn):
         AVG(total_cc_time) AS avg_cc_time, 
         AVG(damage_mitigated) AS avg_dmg_mitigated, 
         AVG(CASE WHEN win = 1 THEN duration_secs ELSE NULL END) AS avg_game_duration_wins,
-        AVG(CASE WHEN win = 0 THEN duration_secs ELSE NULL END) AS avg_game_duration_losses
+        AVG(CASE WHEN win = 0 THEN duration_secs ELSE NULL END) AS avg_game_duration_losses,
+        AVG(damage_dealt_to_champions) AS avg_damage_dealt,
+        AVG(kills) AS avg_kills,
+        AVG(deaths) AS avg_deaths
     FROM participants
     JOIN participant_stats USING (participant_id)
     JOIN matches USING (match_id)
@@ -45,7 +48,8 @@ def derive_tags(conn):
 
 def save_derived_tags(conn, rows):
     query = """
-    INSERT OR REPLACE INTO champion_tags (champion_id, role, patch, avg_cc_time, avg_damage_mitigated, avg_game_duration_wins, avg_game_duration_losses) VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO champion_tags (champion_id, role, patch, avg_cc_time, avg_damage_mitigated, avg_game_duration_wins, avg_game_duration_losses, avg_damage_dealt, avg_kills, avg_deaths) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     for row in rows:
         conn.execute(query, row)

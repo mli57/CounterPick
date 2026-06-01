@@ -205,13 +205,16 @@ def create_db(conn: sqlite3.Connection):
         );
 
         CREATE TABLE IF NOT EXISTS champion_tags (
-            champion_id         INTEGER REFERENCES champion_meta(champion_id),
-            role                TEXT,
-            patch               TEXT,
+            champion_id     INTEGER REFERENCES champion_meta(champion_id),
+            role            TEXT,
+            patch           TEXT,
             avg_cc_time              REAL,
             avg_damage_mitigated     REAL,
             avg_game_duration_wins   REAL,
             avg_game_duration_losses REAL,
+            avg_damage_dealt         REAL,
+            avg_kills                REAL,
+            avg_deaths               REAL,
             PRIMARY KEY (champion_id, role, patch)
         );
     """)
