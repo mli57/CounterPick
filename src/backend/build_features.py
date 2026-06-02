@@ -11,7 +11,7 @@ How it works:
 Features: cc_delta, dmg_mit_delta, damage_dealt_delta, kills_delta, deaths_delta, range_delta
 
 How to run:
-    python src/build_features.py --db lol_draft.db
+    python src/backend/build_features.py --db lol_draft.db
 """
 import argparse
 import sqlite3

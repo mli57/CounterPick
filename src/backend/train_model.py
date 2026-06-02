@@ -1,3 +1,15 @@
+"""
+train_model.py
+
+How it works: 
+Trains XGBoost model on output.csv generated from build_features.py
+Uses 5-fold stratified CV to get a stable evaluation
+Outputs AUC-ROC (can it rank good matchups above bad ones?) and log loss (are the probabilities accurate?)
+
+How to run:
+    python src/backend/train_model.py
+"""
+
 import pandas as pd
 import xgboost as xgb
 import joblib

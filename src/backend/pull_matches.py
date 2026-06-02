@@ -30,7 +30,7 @@ How to run this file:
   2. Set the key as an environment variable:
        $env:RIOT_API_KEY="paste the key here"
   3. Run:
-       python src/pull_matches.py
+       python src/backend/pull_matches.py
   4. Additional flags:
        --db      Path to the SQLite database file
        --target  How many unique matches to collect
@@ -329,7 +329,8 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
     # insert the match row
     conn.execute(
         "INSERT INTO matches(match_id, patch, duration_secs, winning_team, elo_bracket) VALUES (?, ?, ?, ?, ?)",
-        (match_id, info["gameVersion"], info["gameDuration"], winning_team, elo_bracket)
+        (match_id, ".".join(info["gameVersion"].split(".")[:2]), info["gameDuration"], winning_team, elo_bracket) 
+        # groups small patches together by truncating trailing numbers
     )
 
     # insert each of the 10 participants
