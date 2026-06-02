@@ -5,13 +5,14 @@ How it works:
 1. For each game, participants from both sides in the same role are paired. 
 2. Their stat deltas (blue minus red) are calculated using aggregated champion averages from champion_tags.
 3. Label is lane_winner from lane_outcomes (1 = blue laner was ahead in gold at 14 min).
+    ***Games inside the dead zone (|gold lead| =< dead-zone) are dropped because a near-zero lead is not a lane win***
 4. Each row is mirrored from red's perspective to fix perspective bias and also doubles the training data.
 5. Outputs data/output.csv.
 
 Features: cc_delta, dmg_mit_delta, damage_dealt_delta, kills_delta, deaths_delta, range_delta
 
 How to run:
-    python src/backend/build_features.py --db lol_draft.db
+    python src/backend/build_features.py --db lol_draft.db --deadzone 500
 """
 import argparse
 import sqlite3
@@ -26,11 +27,11 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-def get_matchups(conn):
+def get_matchups(conn, deadzone):
     query = """
         -- label: was the blue laner ahead in gold at 14 min?
         SELECT
-            outcome.lane_winner AS win,
+            CASE WHEN outcome.blue_gold_lead_14 > 0 THEN 1 ELSE 0 END AS win,
 
             -- feature deltas: blue minus red for each stat
             blue_tags.avg_cc_time - red_tags.avg_cc_time AS cc_delta,
@@ -67,8 +68,9 @@ def get_matchups(conn):
 
         WHERE blue.team = 100
             AND match.duration_secs > 1200  -- exclude remakes and very short games
+            AND ABS(outcome.blue_gold_lead_14) > ? -- drop deadzone
     """
-    rows = conn.execute(query).fetchall()
+    rows = conn.execute(query, (deadzone,)).fetchall()
 
     # mirror each row from red's perspective: flip the sign of every delta and invert the win label.
     # this fixes the perspective bias (model was only ever seeing blue - red) and this doubles training data for free.
@@ -89,6 +91,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default="lol_draft.db", help="SQLite database path")
+    parser.add_argument("--deadzone", type=int, default=500, help="Drop games where gold lead at 14 =< this many gold")
     return parser.parse_args()
 
 def main():
@@ -97,8 +100,11 @@ def main():
     conn = sqlite3.connect(args.db) # connect to sqlite db
     log.info(f"Connected to {args.db}")
 
+    rows = get_matchups(conn, args.deadzone)
+    log.info(f"{len(rows)} rows after dropping dead zone (|gold lead| <= {args.deadzone}g)")
+
     header = ['win', 'cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta']
-    write_to_csv(get_matchups(conn), "data/output.csv", header)
+    write_to_csv(rows, "data/output.csv", header)
 
 if __name__ == "__main__":
     main()
