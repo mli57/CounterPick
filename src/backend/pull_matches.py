@@ -16,9 +16,10 @@ Tables in db:
     matches               (match_id, patch, duration_secs, winning_team, elo_bracket)
     participants          (match_id, team, champion_id, role_raw, role_normalized, win)
     participant_stats     (participant_id, kills, deaths, assists, total_cc_time, damage_taken, damage_mitigated,
-                           damage_dealt_to_champions, gold_earned, gold_spent, cs, vision_score)
+                           damage_dealt_to_champions, gold_earned, gold_spent, cs, vision_score, laning_phase_adv)
     champion_meta         (champion_id, champion_name, base_range)
     lane_outcomes         (match_id, role, blue_gold_lead_14, lane_winner)
+    participant_lane_stats (match_id, role, team, frame, gold, xp, cs_lane, cs_jungle, level)  -- @10 min and @14 min snapshots
     champion_role_majority & champion_tags are created here but populated by normalize_roles.py and derive_tags.py
 
 API rate limits:
@@ -189,7 +190,8 @@ def create_db(conn: sqlite3.Connection):
             gold_earned                 INTEGER,    -- total gold earned over the game
             gold_spent                  INTEGER,    -- total gold spent (proxy for itemization)
             cs                          INTEGER,    -- totalMinionsKilled + neutralMinionsKilled
-            vision_score                INTEGER     -- ward/vision utility score
+            vision_score                INTEGER,    -- ward/vision utility score
+            laning_phase_adv            INTEGER     -- Riot challenges.laningPhaseGoldExpAdvantage (benchmark label)
         );
 
         CREATE TABLE IF NOT EXISTS champion_meta (
@@ -226,6 +228,19 @@ def create_db(conn: sqlite3.Connection):
             blue_gold_lead_14   INTEGER,    -- pos = blue ahead, neg = red ahead
             lane_winner         INTEGER,    -- 1 = blue, 0 = red
             PRIMARY KEY (match_id, role)
+        );
+
+        CREATE TABLE IF NOT EXISTS participant_lane_stats (
+            match_id    TEXT REFERENCES matches(match_id),
+            role        TEXT,
+            team        INTEGER,    -- 100(blue), 200(red)
+            frame       INTEGER,    -- 10 or 14 (minute mark in timeline)
+            gold        INTEGER,    -- total gold at this frame
+            xp          INTEGER,
+            cs_lane     INTEGER,    -- minions killed
+            cs_jungle   INTEGER,    -- jungle mobs killed
+            level       INTEGER,
+            PRIMARY KEY (match_id, role, team, frame)
         );
     """)
 
@@ -306,6 +321,36 @@ def process_lane_outcomes(conn: sqlite3.Connection, match_id: str, info: dict, t
         )
 
 
+def process_lane_stats(conn: sqlite3.Connection, match_id: str, info: dict, timeline: dict):
+    """
+    Captures per-participant laning-phase snapshots at minute 10 and minute 14 (gold, xp, lane CS, jungle CS, level) into participant_lane_stats.
+    Records all 10 players and every role; label/feature filtering happens later in build_features.py.
+    """
+    frames = timeline["info"]["frames"]
+    if len(frames) <= 14:
+        return
+
+    # timeline participantFrames are keyed 1-indexed; match detail participants are 0-indexed
+    role_team = {i + 1: (p["teamPosition"], p["teamId"]) for i, p in enumerate(info["participants"])}
+
+    for frame_min in (10, 14):
+        for participant_number, participant_frame in frames[frame_min]["participantFrames"].items():
+            role, team = role_team.get(int(participant_number), (None, None))
+            if not role:  # guards against remade matches / unassigned roles
+                continue
+            conn.execute(
+                """INSERT OR IGNORE INTO participant_lane_stats
+                   (match_id, role, team, frame, gold, xp, cs_lane, cs_jungle, level)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (match_id, role, team, frame_min,
+                 participant_frame.get("totalGold", 0),
+                 participant_frame.get("xp", 0),
+                 participant_frame.get("minionsKilled", 0),
+                 participant_frame.get("jungleMinionsKilled", 0),
+                 participant_frame.get("level", 0))
+            )
+
+
 def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str, elo_bracket: str):
     """
     fetches & inserts one match (matches, participants, participant_stats). skips and returns False if already in db.
@@ -348,7 +393,7 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
         # insert their stats, linked to that participant_id
         # use .get() with a default of 0, some fields don't apply to certain champs or game states(some champs dont have cc)
         conn.execute(
-            "INSERT INTO participant_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO participant_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (pid,
              p.get("kills", 0),
              p.get("deaths", 0),
@@ -360,11 +405,13 @@ def process_match(client: RiotAPIClient, conn: sqlite3.Connection, match_id: str
              p.get("goldEarned", 0),
              p.get("goldSpent", 0),
              p.get("totalMinionsKilled", 0) + p.get("neutralMinionsKilled", 0),  # CS = lane + jungle
-             p.get("visionScore", 0))
+             p.get("visionScore", 0),
+             p.get("challenges", {}).get("laningPhaseGoldExpAdvantage", 0))  # challenges absent on remakes/old games
         )
 
     timeline = client.get_match_timeline(match_id)
     process_lane_outcomes(conn, match_id, info, timeline)
+    process_lane_stats(conn, match_id, info, timeline)
 
     conn.commit()
     return True
