@@ -63,6 +63,34 @@ def get_champion(conn, name, role, patch):
     
     return result
 
+def load_model(path: str = "models/model.pkl"):
+    return joblib.load(path)
+
+def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
+    patch = conn.execute("SELECT MAX(patch) FROM champion_tags").fetchone()[0]
+
+    champ1_stats = get_champion(conn, champ1, role, patch)
+    champ2_stats = get_champion(conn, champ2, role, patch)
+
+    deltas = [
+        champ1_stats[2] - champ2_stats[2],  # cc
+        champ1_stats[3] - champ2_stats[3],  # dmg_mit
+        champ1_stats[4] - champ2_stats[4],  # dmg_dealt
+        champ1_stats[5] - champ2_stats[5],  # kills
+        champ1_stats[6] - champ2_stats[6],  # deaths
+        champ1_stats[1] - champ2_stats[1],  # range
+    ]
+
+    warnings = []
+    if is_flex(conn, champ1_stats[0], role, patch):
+        warnings.append(f"{champ1} is not commonly played in {role}: prediction may be inaccurate")
+    if is_flex(conn, champ2_stats[0], role, patch):
+        warnings.append(f"{champ2} is not commonly played in {role}: prediction may be inaccurate")
+
+    win_prob = float(model.predict_proba([deltas])[0][1])
+    return {"win_probability": win_prob, "warnings": warnings}
+
+
 def parse_args():
     # houses the db flags only, so we can point script at different db files.
     parser = argparse.ArgumentParser()
@@ -71,37 +99,19 @@ def parse_args():
 
 def main():
     args = parse_args()
-    conn = sqlite3.connect(args.db) # connect to sqlite db
+    conn = sqlite3.connect(args.db)
     log.info(f"Connected to {args.db}")
 
-    # Players are always playing on the latest patch
-    query = """
-    SELECT MAX(patch) FROM champion_tags
-    """
-    patch = conn.execute(query).fetchone()[0]
-
-    champ1 = input("Enter champion 1: ")#.lower()
-    champ2 = input("Enter champion 2: ")#.lower()
+    champ1 = input("Enter champion 1: ")
+    champ2 = input("Enter champion 2: ")
     role = input("Enter your role: ").upper()
 
-    champ1_stats = get_champion(conn, champ1, role, patch)
-    champ2_stats = get_champion(conn, champ2, role, patch)
-    deltas = [champ1_stats[2] - champ2_stats[2], # cc
-              champ1_stats[3] - champ2_stats[3], # dmg_mit
-              champ1_stats[4] - champ2_stats[4], # dmg_dlt
-              champ1_stats[5] - champ2_stats[5], # avg_kill
-              champ1_stats[6] - champ2_stats[6], # avg_death
-              champ1_stats[1] - champ2_stats[1]  # range
-              ]
+    model = load_model()
+    result = predict_matchup(conn, model, champ1, champ2, role)
 
-    if is_flex(conn, champ1_stats[0], role, patch):
-        log.warning(f"{champ1} is not commonly played in {role}: prediction may be inaccurate")
-    if is_flex(conn, champ2_stats[0], role, patch):
-        log.warning(f"{champ2} is not commonly played in {role}: prediction may be inaccurate")
-
-    model = joblib.load("models/model.pkl")
-    win_prob = model.predict_proba([deltas])[0][1]
-    log.info(f"{champ1} win probability vs {champ2} in {role}: {win_prob:.1%}")
+    for w in result["warnings"]:
+        log.warning(w)
+    log.info(f"{champ1} win probability vs {champ2} in {role}: {result['win_probability']:.1%}")
 
 
 if __name__ == "__main__":
