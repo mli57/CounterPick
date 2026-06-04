@@ -60,6 +60,13 @@ def get_champions():
     return result
     
 
+ROLE_MAP = {
+    "TOP": "TOP",
+    "JNG": "JUNGLE",
+    "MID": "MIDDLE",
+    "ADC": "BOTTOM",
+    "SUP": "UTILITY",
+}
 
 # define requests
 class PredictRequest(BaseModel):
@@ -70,15 +77,18 @@ class PredictRequest(BaseModel):
 # post model prediction results to frontend
 @app.post("/predict")
 def predict(req: PredictRequest):
+    role = ROLE_MAP.get(req.role.upper())
+    if role is None:
+        raise HTTPException(status_code=400, detail=f"Unknown role: {req.role}")
     try:
         result = predict_matchup(
             state["conn"],
             state["model"],
             req.champion,
             req.opponent,
-            req.role.upper(),
+            role,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    
+
     return result

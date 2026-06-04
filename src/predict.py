@@ -58,10 +58,25 @@ def get_champion(conn, name, role, patch):
     """
 
     result = conn.execute(query, (name, role, patch)).fetchone()
+    if result is not None:
+        return result, None  # (stats, fallback_role)
+
+    # fall back to majority role if no stats found for the chosen role(E.g Fiora support)
+    fallback_query = """
+        SELECT majority_role FROM champion_role_majority
+        JOIN champion_meta USING (champion_id)
+        WHERE champion_name = ? AND patch = ?
+    """
+    row = conn.execute(fallback_query, (name, patch)).fetchone()
+    if row is None:
+        raise ValueError(f"{name} not found in database.")
+
+    fallback_role = row[0]
+    result = conn.execute(query, (name, fallback_role, patch)).fetchone()
     if result is None:
-        raise ValueError("Champion not found.")
-    
-    return result
+        raise ValueError(f"No stats found for {name}.")
+
+    return result, fallback_role
 
 def load_model(path: str = "models/model.pkl"):
     return joblib.load(path)
@@ -69,8 +84,8 @@ def load_model(path: str = "models/model.pkl"):
 def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
     patch = conn.execute("SELECT MAX(patch) FROM champion_tags").fetchone()[0]
 
-    champ1_stats = get_champion(conn, champ1, role, patch)
-    champ2_stats = get_champion(conn, champ2, role, patch)
+    champ1_stats, champ1_fallback = get_champion(conn, champ1, role, patch)
+    champ2_stats, champ2_fallback = get_champion(conn, champ2, role, patch)
 
     deltas = [
         champ1_stats[2] - champ2_stats[2],  # cc
@@ -82,9 +97,14 @@ def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
     ]
 
     warnings = []
-    if is_flex(conn, champ1_stats[0], role, patch):
+    if champ1_fallback:
+        warnings.append(f"No {role} data for {champ1}: using stats for {champ1_fallback} instead, predictions may be inaccurate")
+    elif is_flex(conn, champ1_stats[0], role, patch):
         warnings.append(f"{champ1} is not commonly played in {role}: prediction may be inaccurate")
-    if is_flex(conn, champ2_stats[0], role, patch):
+
+    if champ2_fallback:
+        warnings.append(f"No {role} data for {champ2}: using stats for {champ2_fallback} instead, predictions may be inaccurate")
+    elif is_flex(conn, champ2_stats[0], role, patch):
         warnings.append(f"{champ2} is not commonly played in {role}: prediction may be inaccurate")
 
     win_prob = float(model.predict_proba([deltas])[0][1])
