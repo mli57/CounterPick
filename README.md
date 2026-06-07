@@ -24,12 +24,38 @@ For a full breakdown of the technical decisions and architecture, see [DESIGN.md
 
 ## Stack
 
-- **Frontend:** React & Tailwind
+- **Frontend:** React + TypeScript, Vite, Tailwind CSS, shadcn
 - **Backend:** FastAPI
 - **ML:** XGBoost
 - **Data:** Riot Games API (match-v5)
 - **Database:** SQLite
 
+
+## Setup
+
+Clone the repo, then run the setup script specific for your device. It installs Python dependencies and frontend Node modules in one step.
+
+**Windows:**
+```bat
+setup.bat
+```
+
+**Mac/Linux:**
+```bash
+chmod +x setup.sh && ./setup.sh
+```
+
+To start the app after setup:
+```bash
+# Backend (from project root)
+uvicorn src.api.main:app --reload
+
+# Frontend (in a separate terminal)
+cd frontend
+npm run dev
+```
+
+---
 
 ## Status
 
@@ -39,8 +65,10 @@ For a full breakdown of the technical decisions and architecture, see [DESIGN.md
 | Role normalization | Done |
 | Feature engineering | Done |
 | Model training | Done |
-| FastAPI backend | In progress |
-| React frontend | In progress |
+| FastAPI backend | Done |
+| React/TypeScript frontend | Done |
+
+Currently working on adding the power spike breakdown, tilt indicator, and a better model(w/ features for abilities)
 
 ---
 
