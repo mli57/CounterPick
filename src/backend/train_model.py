@@ -15,7 +15,9 @@ import xgboost as xgb
 import joblib
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
-FEATURES = ['cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta']
+FEATURES = ['cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta',
+            'gold_14_delta', 'xp_14_delta', 'cs_lane_14_delta', 'level_14_delta',
+            'gold_10_delta', 'xp_10_delta', 'cs_lane_10_delta', 'level_10_delta']
 
 def main():
     df_raw = pd.read_csv("data/output.csv")

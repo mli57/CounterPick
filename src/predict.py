@@ -47,12 +47,17 @@ def get_champion(conn, name, role, patch):
 
         get_stats AS(
             SELECT champion_id, role, patch, 
-                avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths
+                avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths,
+                avg_gold_14, avg_xp_14, avg_cs_lane_14, avg_level_14,
+                avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10
             FROM champion_tags
             WHERE role = ? AND patch = ?
         )
 
-        SELECT champion_id, base_range, avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths
+        SELECT champion_id, base_range,
+               avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths,
+               avg_gold_14, avg_xp_14, avg_cs_lane_14, avg_level_14,
+               avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10
         FROM get_champ 
         JOIN get_stats USING (champion_id)
     """
@@ -87,13 +92,25 @@ def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
     champ1_stats, champ1_fallback = get_champion(conn, champ1, role, patch)
     champ2_stats, champ2_fallback = get_champion(conn, champ2, role, patch)
 
+    # stat delta: champ minus opponent, treating NULL as 0
+    def d(a, b):
+        return (a or 0) - (b or 0)
+
     deltas = [
-        champ1_stats[2] - champ2_stats[2],  # cc
-        champ1_stats[3] - champ2_stats[3],  # dmg_mit
-        champ1_stats[4] - champ2_stats[4],  # dmg_dealt
-        champ1_stats[5] - champ2_stats[5],  # kills
-        champ1_stats[6] - champ2_stats[6],  # deaths
-        champ1_stats[1] - champ2_stats[1],  # range
+        d(champ1_stats[2],  champ2_stats[2]),   # cc
+        d(champ1_stats[3],  champ2_stats[3]),   # dmg_mit
+        d(champ1_stats[4],  champ2_stats[4]),   # dmg_dealt
+        d(champ1_stats[5],  champ2_stats[5]),   # kills
+        d(champ1_stats[6],  champ2_stats[6]),   # deaths
+        d(champ1_stats[1],  champ2_stats[1]),   # range
+        d(champ1_stats[7],  champ2_stats[7]),   # gold_14
+        d(champ1_stats[8],  champ2_stats[8]),   # xp_14
+        d(champ1_stats[9],  champ2_stats[9]),   # cs_lane_14
+        d(champ1_stats[10], champ2_stats[10]),  # level_14
+        d(champ1_stats[11], champ2_stats[11]),  # gold_10
+        d(champ1_stats[12], champ2_stats[12]),  # xp_10
+        d(champ1_stats[13], champ2_stats[13]),  # cs_lane_10
+        d(champ1_stats[14], champ2_stats[14]),  # level_10
     ]
 
     warnings = []

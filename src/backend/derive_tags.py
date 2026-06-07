@@ -21,35 +21,61 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+def add_lane_stat_columns(conn):
+    for col in ["avg_gold_10", "avg_gold_14", "avg_xp_10", "avg_xp_14",
+                  "avg_cs_lane_10", "avg_cs_lane_14", "avg_level_10", "avg_level_14"]:  
+        try:
+            conn.execute(f"ALTER TABLE champion_tags ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError: pass
+    conn.commit()
+
 def derive_tags(conn):
     # aggregate avg cc time, damage mitigated, and win-only game duration per (champion, role, patch). 
     # CASE WHEN filters duration to wins only;
     # AVG ignores NULLs so losers don't drag the average down.
     query = """
     SELECT 
-        champion_id, 
-        role_normalized, 
-        patch, 
-        AVG(total_cc_time) AS avg_cc_time, 
-        AVG(damage_mitigated) AS avg_dmg_mitigated, 
-        AVG(CASE WHEN win = 1 THEN duration_secs ELSE NULL END) AS avg_game_duration_wins,
-        AVG(CASE WHEN win = 0 THEN duration_secs ELSE NULL END) AS avg_game_duration_losses,
-        AVG(damage_dealt_to_champions) AS avg_damage_dealt,
-        AVG(kills) AS avg_kills,
-        AVG(deaths) AS avg_deaths
-    FROM participants
-    JOIN participant_stats USING (participant_id)
-    JOIN matches USING (match_id)
-    WHERE role_normalized IS NOT NULL
-    GROUP BY champion_id, role_normalized, patch
+          participants.champion_id, 
+          participants.role_normalized, 
+          matches.patch, 
+          AVG(total_cc_time),
+          AVG(damage_mitigated),
+          AVG(CASE WHEN participants.win = 1 THEN duration_secs ELSE NULL END),
+          AVG(CASE WHEN participants.win = 0 THEN duration_secs ELSE NULL END),
+          AVG(damage_dealt_to_champions),
+          AVG(kills),
+          AVG(deaths),
+          AVG(CASE WHEN pls.frame = 10 THEN pls.gold     END),
+          AVG(CASE WHEN pls.frame = 14 THEN pls.gold     END),
+          AVG(CASE WHEN pls.frame = 10 THEN pls.xp       END),
+          AVG(CASE WHEN pls.frame = 14 THEN pls.xp       END),
+          AVG(CASE WHEN pls.frame = 10 THEN pls.cs_lane  END),
+          AVG(CASE WHEN pls.frame = 14 THEN pls.cs_lane  END),
+          AVG(CASE WHEN pls.frame = 10 THEN pls.level    END),
+          AVG(CASE WHEN pls.frame = 14 THEN pls.level    END)
+      FROM participants
+      JOIN participant_stats USING (participant_id)
+      JOIN matches USING (match_id)
+      LEFT JOIN participant_lane_stats pls
+          ON  pls.match_id = participants.match_id
+          AND pls.team     = participants.team
+          AND pls.role     = participants.role_raw
+      WHERE participants.role_normalized IS NOT NULL
+      GROUP BY participants.champion_id, participants.role_normalized, matches.patch
     """
 
     return conn.execute(query).fetchall()
 
 def save_derived_tags(conn, rows):
     query = """
-    INSERT OR REPLACE INTO champion_tags (champion_id, role, patch, avg_cc_time, avg_damage_mitigated, avg_game_duration_wins, avg_game_duration_losses, avg_damage_dealt, avg_kills, avg_deaths) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO champion_tags (
+        champion_id, role, patch, avg_cc_time, avg_damage_mitigated, avg_game_duration_wins, 
+        avg_game_duration_losses, avg_damage_dealt, avg_kills, avg_deaths,
+
+        avg_gold_10, avg_gold_14, avg_xp_10, avg_xp_14, 
+        avg_cs_lane_10, avg_cs_lane_14, avg_level_10, avg_level_14
+    ) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,   ?, ?, ?, ?, ?, ?, ?, ?)
     """
     for row in rows:
         conn.execute(query, row)
@@ -70,6 +96,8 @@ def main():
 
     conn = sqlite3.connect(args.db) # connect to sqlite db
     log.info(f"Connected to {args.db}")
+
+    add_lane_stat_columns(conn)
 
     derived_tag = derive_tags(conn)
     save_derived_tags(conn, derived_tag)

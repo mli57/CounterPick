@@ -9,7 +9,9 @@ How it works:
 4. Each row is mirrored from red's perspective to fix perspective bias and also doubles the training data.
 5. Outputs data/output.csv.
 
-Features: cc_delta, dmg_mit_delta, damage_dealt_delta, kills_delta, deaths_delta, range_delta
+Features: cc_delta, dmg_mit_delta, damage_dealt_delta, kills_delta, deaths_delta, range_delta,
+          gold_14_delta, xp_14_delta, cs_lane_14_delta, level_14_delta,
+          gold_10_delta, xp_10_delta, cs_lane_10_delta, level_10_delta
 
 How to run:
     python src/backend/build_features.py --db lol_draft.db --deadzone 500
@@ -33,15 +35,23 @@ def get_matchups(conn, deadzone):
         SELECT
             CASE WHEN outcome.blue_gold_lead_14 > 0 THEN 1 ELSE 0 END AS win,
 
-            -- feature deltas: blue minus red for each stat
-            blue_tags.avg_cc_time - red_tags.avg_cc_time AS cc_delta,
-            blue_tags.avg_damage_mitigated - red_tags.avg_damage_mitigated AS dmg_mit_delta,
-            blue_tags.avg_damage_dealt - red_tags.avg_damage_dealt AS damage_dealt_delta,
-            blue_tags.avg_kills - red_tags.avg_kills AS kills_delta,
-            blue_tags.avg_deaths - red_tags.avg_deaths AS deaths_delta,
-            blue_meta.base_range - red_meta.base_range AS range_delta
+            blue_tags.avg_cc_time - red_tags.avg_cc_time,
+            blue_tags.avg_damage_mitigated - red_tags.avg_damage_mitigated,
+            blue_tags.avg_damage_dealt - red_tags.avg_damage_dealt,
+            blue_tags.avg_kills - red_tags.avg_kills,
+            blue_tags.avg_deaths - red_tags.avg_deaths,
+            blue_meta.base_range - red_meta.base_range,
 
-        -- one row per role per game: blue side participant vs red side participant
+            blue_tags.avg_gold_14 - red_tags.avg_gold_14,
+            blue_tags.avg_xp_14 - red_tags.avg_xp_14,
+            blue_tags.avg_cs_lane_14 - red_tags.avg_cs_lane_14,
+            blue_tags.avg_level_14 - red_tags.avg_level_14,
+
+            blue_tags.avg_gold_10 - red_tags.avg_gold_10,
+            blue_tags.avg_xp_10 - red_tags.avg_xp_10,
+            blue_tags.avg_cs_lane_10 - red_tags.avg_cs_lane_10,
+            blue_tags.avg_level_10 - red_tags.avg_level_10
+
         FROM participants blue
         JOIN participants red ON red.match_id = blue.match_id
             AND red.role_normalized = blue.role_normalized
@@ -72,10 +82,10 @@ def get_matchups(conn, deadzone):
     """
     rows = conn.execute(query, (deadzone,)).fetchall()
 
-    # mirror each row from red's perspective: flip the sign of every delta and invert the win label.
-    # this fixes the perspective bias (model was only ever seeing blue - red) and this doubles training data for free.
-    mirrored = [(1 - win, -cc, -dmg_mit, -dmg_dealt, -kills, -deaths, -range_d)
-                for win, cc, dmg_mit, dmg_dealt, kills, deaths, range_d in rows]
+    mirrored = [(1 - win, -cc, -dmg_mit, -dmg_dealt, -kills, -deaths, -range_d,
+                 -g14, -xp14, -cs14, -lvl14, -g10, -xp10, -cs10, -lvl10)
+                for win, cc, dmg_mit, dmg_dealt, kills, deaths, range_d,
+                    g14, xp14, cs14, lvl14, g10, xp10, cs10, lvl10 in rows]
 
     return rows + mirrored
 
@@ -101,10 +111,13 @@ def main():
     log.info(f"Connected to {args.db}")
 
     rows = get_matchups(conn, args.deadzone)
-    log.info(f"{len(rows)} rows after dropping dead zone (|gold lead| <= {args.deadzone}g)")
+    log.info(f"{len(rows)} rows after deadzone={args.deadzone}g and mirroring")
 
-    header = ['win', 'cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta']
+    header = ['win', 'cc_delta', 'dmg_mit_delta', 'damage_dealt_delta', 'kills_delta', 'deaths_delta', 'range_delta',
+              'gold_14_delta', 'xp_14_delta', 'cs_lane_14_delta', 'level_14_delta',
+              'gold_10_delta', 'xp_10_delta', 'cs_lane_10_delta', 'level_10_delta']
     write_to_csv(rows, "data/output.csv", header)
+    log.info("Wrote data/output.csv")
 
 if __name__ == "__main__":
     main()

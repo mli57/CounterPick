@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from src.predict import load_model, predict_matchup
 
 
-DB_PATH = "lol_draft.db"
+DB_PATH = "test.db"
 MODEL_PATH = "models/model.pkl"
 
 state = {}
