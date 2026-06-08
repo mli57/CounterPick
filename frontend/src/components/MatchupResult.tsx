@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function MatchupResult({ result, champion, opponent }: Props) {
-	const { win_probability, warnings } = result
+	const { win_probability, warnings, champion_phase, opponent_phase } = result
 	const pct = Math.round(win_probability * 100)
 	const winning = win_probability >= 0.5  // determines bar/text color(green = high, red = low)
 
@@ -26,7 +26,7 @@ export function MatchupResult({ result, champion, opponent }: Props) {
 			{/* Win probability bar: green if >= 50%, red if below */}
 			<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between">
-				<span className="text-muted-foreground">Win probability</span>
+				<span className="text-muted-foreground">Lane Win Probability</span>
 				<span className={cn("font-semibold text-lg", winning ? "text-green-500" : "text-red-500")}>
 				{pct}%
 				</span>
@@ -38,6 +38,18 @@ export function MatchupResult({ result, champion, opponent }: Props) {
 				style={{ width: `${pct}%` }}
 				/>
 			</div>
+			</div>
+
+			{/* Phase breakdown: one row per champion */}
+			<div className="grid grid-cols-2 gap-3">
+				<div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex flex-col gap-0.5">
+					<span className="text-xs text-muted-foreground">{champion}</span>
+					<span className="text-sm font-medium">{champion_phase}</span>
+				</div>
+				<div className="rounded-lg border border-border bg-muted/40 px-3 py-2 flex flex-col gap-0.5">
+					<span className="text-xs text-muted-foreground">{opponent}</span>
+					<span className="text-sm font-medium">{opponent_phase}</span>
+				</div>
 			</div>
 
 			{/* Warnings from the backend: off-role picks, fallback stats used, etc. */}

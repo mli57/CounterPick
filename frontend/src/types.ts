@@ -11,4 +11,6 @@ export type Champion = {
 export type PredictResult = {
   win_probability: number  // 0.0 to 1.0
   warnings: string[]       // off-role or fallback notices from predict.py
+  champion_phase: string   // e.g. "strong early", "peaks mid game", "strong late", "even scaling"
+  opponent_phase: string
 }

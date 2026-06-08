@@ -49,7 +49,8 @@ def get_champion(conn, name, role, patch):
             SELECT champion_id, role, patch, 
                 avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths,
                 avg_gold_14, avg_xp_14, avg_cs_lane_14, avg_level_14,
-                avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10
+                avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10,
+                avg_game_duration_wins, avg_game_duration_losses
             FROM champion_tags
             WHERE role = ? AND patch = ?
         )
@@ -57,7 +58,8 @@ def get_champion(conn, name, role, patch):
         SELECT champion_id, base_range,
                avg_cc_time, avg_damage_mitigated, avg_damage_dealt, avg_kills, avg_deaths,
                avg_gold_14, avg_xp_14, avg_cs_lane_14, avg_level_14,
-               avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10
+               avg_gold_10, avg_xp_10, avg_cs_lane_10, avg_level_10,
+               avg_game_duration_wins, avg_game_duration_losses
         FROM get_champ 
         JOIN get_stats USING (champion_id)
     """
@@ -83,10 +85,20 @@ def get_champion(conn, name, role, patch):
 
     return result, fallback_role
 
-def load_model(path: str = "models/model.pkl"):
+def phase_label(win_dur, loss_dur):
+    if win_dur is None or loss_dur is None:
+        return "even scaling"
+    diff = win_dur - loss_dur  # negative = wins faster = early, positive = wins slower = late
+    if diff < -120:
+        return "strong early"
+    if diff > 120:
+        return "strong late"
+    return "even scaling"
+
+def load_model(path="models/model.pkl"):
     return joblib.load(path)
 
-def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
+def predict_matchup(conn, model, champ1, champ2, role):
     patch = conn.execute("SELECT MAX(patch) FROM champion_tags").fetchone()[0]
 
     champ1_stats, champ1_fallback = get_champion(conn, champ1, role, patch)
@@ -125,7 +137,12 @@ def predict_matchup(conn, model, champ1: str, champ2: str, role: str) -> dict:
         warnings.append(f"{champ2} is not commonly played in {role}: prediction may be inaccurate")
 
     win_prob = float(model.predict_proba([deltas])[0][1])
-    return {"win_probability": win_prob, "warnings": warnings}
+    return {
+        "win_probability": win_prob,
+        "warnings": warnings,
+        "champion_phase": phase_label(champ1_stats[15], champ1_stats[16]),
+        "opponent_phase": phase_label(champ2_stats[15], champ2_stats[16]),
+    }
 
 
 def parse_args():
