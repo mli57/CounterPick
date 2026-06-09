@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { ChampionCombobox } from "@/components/ChampionCombobox"
 import { RoleSelector } from "@/components/RoleSelector"
 import { MatchupResult } from "@/components/MatchupResult"
+import { TiltLookup } from "@/components/TiltLookup"
 import { Button } from "@/components/ui/button"
 import { fetchChampions, fetchPredict } from "@/lib/api"
 import type { Champion, PredictResult } from "@/types"
@@ -105,6 +106,11 @@ export default function App() {
                     <MatchupResult result={result} champion={champion} opponent={opponent} />
                 )}
 
+                <div className="flex flex-col gap-6">
+                    <h2 className="text-xl font-semibold">Tilt Check</h2>
+                    <p className="text-sm text-muted-foreground">Win rate over last 10 ranked games</p>
+                    <TiltLookup />
+                </div>
             </div>
         </div>
     )

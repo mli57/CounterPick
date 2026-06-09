@@ -4,6 +4,8 @@ FastAPI server
 How to run: 
     uvicorn src.api.main:app --reload
 """
+import os
+import requests
 import sqlite3
 from contextlib import asynccontextmanager
 
@@ -19,11 +21,17 @@ MODEL_PATH = "models/model.pkl"
 
 state = {}
 
+def riot_get(url):
+    response = requests.get(url, headers={"X-Riot-Token": state["api_key"]})
+    response.raise_for_status()
+    return response.json()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup: load model and db into dict
     state["model"] = load_model(MODEL_PATH)
     state["conn"] = sqlite3.connect(DB_PATH, check_same_thread=False)
+    state["api_key"] = os.environ.get("RIOT_API_KEY", "").strip()
     yield
 
     #shutdown: runs when server stops
@@ -92,3 +100,34 @@ def predict(req: PredictRequest):
         raise HTTPException(status_code=404, detail=str(e))
 
     return result
+
+
+@app.get("/tilt/{game_name}/{tag_line}")
+def get_tilt(game_name, tag_line):
+    if not state["api_key"]:
+        raise HTTPException(status_code=503, detail="Riot API key not added")
+    try:
+        player_riot_id = riot_get(f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}")
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"{game_name}#{tag_line} not found")
+        raise
+    puuid = player_riot_id["puuid"] # lookup account
+
+    # get 10 matches
+    match_ids = riot_get(f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?queue=420&count=10")
+
+    if not match_ids: # accounts w/ 0 games
+        raise HTTPException(status_code=404, detail=f"No ranked games found for {game_name}#{tag_line}")
+
+    wins = 0
+    for match_id in match_ids: # go through each match and check if player is on the winning team, increment win count
+        each_match = riot_get(f"https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}")
+        participant = next((player for player in each_match["info"]["participants"] if player["puuid"] == puuid), None)
+        if participant and participant["win"]:
+            wins += 1
+
+    total = len(match_ids)
+    win_rate = wins / total # calculates win percentage, and determines streak
+    status = "hot streak" if win_rate >= 0.7 else "cold streak" if win_rate <= 0.3 else "neutral"
+    return {"wins": wins, "total": total, "win_rate": win_rate, "status": status}

@@ -55,6 +55,8 @@ cd frontend
 npm run dev
 ```
 
+* to run the model w/o api key, use test.db
+* tilt check only works with api key
 ---
 
 ## Status
@@ -68,7 +70,7 @@ npm run dev
 | FastAPI backend | Done |
 | React/TypeScript frontend | Done |
 
-Currently working on adding the power spike breakdown, tilt indicator, and a better model(w/ features for abilities)
+Currently working on a better predictive model w/ features for abilities
 
 ---
 

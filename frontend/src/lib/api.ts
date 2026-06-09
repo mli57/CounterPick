@@ -1,4 +1,4 @@
-import type { Champion, PredictResult } from "@/types"
+import type { Champion, PredictResult, TiltResult } from "@/types"
 
 // All requests go to the FastAPI backend
 const BASE = "http://localhost:8000"
@@ -24,6 +24,18 @@ export async function fetchPredict(champion: string, opponent: string, role: str
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}))
 		throw new Error(body.detail ?? "Prediction failed")
+	}
+	return response.json()
+}
+
+export async function fetchTilt(riotId: string): Promise<TiltResult> {
+	const [gameName, tagLine] = riotId.split("#")
+    	if (!gameName || !tagLine) throw new Error("Enter your Riot ID as GameName#Tag")
+	const response = await fetch(`${BASE}/tilt/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`)
+	
+	if (!response.ok) {
+		const body = await response.json().catch(() => ({}))
+		throw new Error(body.detail ?? "Tilt lookup failed")
 	}
 	return response.json()
 }
