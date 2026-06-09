@@ -1,6 +1,6 @@
 # LoL Matchup Analyzer
 
-Work in progress, core pipeline under active development.
+Version 1 complete. Working on adding champion abilities as model prediction features.
 
 A web app that tells you how your champion matchup plays out and when you are strongest, built for use during champ select. Made for a personal project.
 
