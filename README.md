@@ -1,23 +1,62 @@
-# LoL Matchup Analyzer
-
-Version 1 complete. Working on adding champion abilities as model prediction features.
+# CounterPick: LoL Lane Matchup Analyzer
 
 A web app that tells you how your champion matchup plays out and when you are strongest, built for use during champ select. Made for a personal project.
 
 ---
 
+## Setup
+
+Clone the repo, then run the setup script specific for your device. It installs Python dependencies and frontend Node modules in one step.
+
+**Windows:**
+```bat
+setup.bat
+run_pipeline.bat
+```
+
+**Mac/Linux:**
+```bash
+chmod +x setup.sh && ./setup.sh
+chmod +x run_pipeline.sh && ./run_pipeline.sh
+```
+
+To start the app after setup & running pipeline:
+```bash
+# Backend (from project root)
+uvicorn src.api.main:app --reload
+
+# Frontend (in a separate terminal)
+cd frontend
+npm run dev
+```
+
+* A prebuilt database (`test.db`) is included so you can run the pipeline & app immediately without a Riot API key. Pulling fresh data takes several hours and requires adding your own key as an env variable(see `pull_matches.py`)
+* The tilt indicator makes live Riot API calls and does not depend on the pipeline or database. It requires an API key but you can test it immediately after setup without running the pipeline.
+
 ## Features
 
 **Matchup Lookup**
+
 Input your champion, your opponent's, and your role. Get back a predicted win rate, an early/mid/late power breakdown, and a summary of how the matchup plays out.
 
-![Matchup Lookup](images/predict.png)
+<img src="images/predict.png" width="800"/>
+
 
 **Tilt Indicator**
+
 Look up any summoner to see their win rate over their last 10 games. Quick way to gauge a teammate or opponent during champ select.
 
-![Tilt Indicator](images/tiltcheck.png)
+<img src="images/tiltcheck.png" width="800"/>
 
+## Stack
+
+- **Frontend:** React + TypeScript, Vite, Tailwind CSS, shadcn
+- **Backend:** FastAPI
+- **ML:** XGBoost
+- **Data:** Riot Games API (match-v5)
+- **Database:** SQLite
+
+---
 
 ## How It Works
 
@@ -58,44 +97,6 @@ Each cell is the predicted win rate for the row champion against the column cham
 
 Clear patterns show up across the grid. Some champions have mostly green rows, meaning they beat most of the meta pool and are reliable blind picks. Others are mixed, meaning they rely on hitting specific good matchups rather than being generally strong.
 
----
-
-
-## Stack
-
-- **Frontend:** React + TypeScript, Vite, Tailwind CSS, shadcn
-- **Backend:** FastAPI
-- **ML:** XGBoost
-- **Data:** Riot Games API (match-v5)
-- **Database:** SQLite
-
-
-## Setup
-
-Clone the repo, then run the setup script specific for your device. It installs Python dependencies and frontend Node modules in one step.
-
-**Windows:**
-```bat
-setup.bat
-```
-
-**Mac/Linux:**
-```bash
-chmod +x setup.sh && ./setup.sh
-```
-
-To start the app after setup:
-```bash
-# Backend (from project root)
-uvicorn src.api.main:app --reload
-
-# Frontend (in a separate terminal)
-cd frontend
-npm run dev
-```
-
-* to run the model w/o api key, use test.db
-* tilt check only works with api key
 
 ---
 
